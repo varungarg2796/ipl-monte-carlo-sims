@@ -45,11 +45,18 @@ if 'To be announced' in teams:
     teams.remove('To be announced')
 
 # Define a function to update the result for a given match number
-def update_result(df, match_number, winner):
-    # Ensure winner abbreviation is used if full name provided
-    winner_abbr = team_abbreviations.get(winner, winner)
+def update_result(df, match_number, winner=None):
+    """
+    Update the result for a given match number.
+    If winner is None or 'NR', mark as No Result (e.g., rain washout).
+    Otherwise, use the winner's abbreviation.
+    """
     if match_number in df['Match Number'].values:
-        df.loc[df['Match Number'] == match_number, 'Result'] = winner_abbr
+        if winner is None or winner == 'NR':
+            df.loc[df['Match Number'] == match_number, 'Result'] = 'NR'
+        else:
+            winner_abbr = team_abbreviations.get(winner, winner)
+            df.loc[df['Match Number'] == match_number, 'Result'] = winner_abbr
     else:
         print(f"Warning: Match Number {match_number} not found in schedule.")
     return df
@@ -57,7 +64,8 @@ def update_result(df, match_number, winner):
 # ==============================================================================
 # == UPDATE COMPLETED MATCH RESULTS HERE ==
 # ==============================================================================
-# Match results updated through match 42
+# Match results updated through match 42, plus example no-result matches
+# Example: Assume matches 44 and 45 were washed out due to rain
 
 df_abbreviated = update_result(df_abbreviated, match_number=1, winner='RCB')
 df_abbreviated = update_result(df_abbreviated, match_number=2, winner='SRH')
@@ -102,6 +110,11 @@ df_abbreviated = update_result(df_abbreviated, match_number=40, winner='DC')
 df_abbreviated = update_result(df_abbreviated, match_number=41, winner='MI')
 df_abbreviated = update_result(df_abbreviated, match_number=42, winner='RCB')
 df_abbreviated = update_result(df_abbreviated, match_number=43, winner='SRH')
+# Example no-result matches (rain washouts)
+df_abbreviated = update_result(df_abbreviated, match_number=44, winner='NR')
+df_abbreviated = update_result(df_abbreviated, match_number=45, winner='MI')
+df_abbreviated = update_result(df_abbreviated, match_number=46, winner='RCB')
+
 
 
 # ==============================================================================
@@ -110,23 +123,31 @@ df_abbreviated = update_result(df_abbreviated, match_number=43, winner='SRH')
 completed_matches = df_abbreviated[df_abbreviated['Result'] != ''].copy()
 
 # Initialize a points dictionary (base state)
-initial_points_table = {team: {'Matches': 0, 'Wins': 0, 'Losses': 0, 'Points': 0} for team in teams}
+initial_points_table = {team: {'Matches': 0, 'Wins': 0, 'Losses': 0, 'Points': 0, 'No Results': 0} for team in teams}
 
-# Calculate wins, losses, and points from completed matches
+# Calculate wins, losses, points, and no-results from completed matches
 for _, row in completed_matches.iterrows():
     home = row['Home Team']
     away = row['Away Team']
-    winner = row['Result']
+    result = row['Result']
 
     if home in initial_points_table: initial_points_table[home]['Matches'] += 1
     if away in initial_points_table: initial_points_table[away]['Matches'] += 1
 
-    if winner == home:
+    if result == 'NR':
+        # No Result: Both teams get 1 point
+        if home in initial_points_table:
+            initial_points_table[home]['Points'] += 1
+            initial_points_table[home]['No Results'] += 1
+        if away in initial_points_table:
+            initial_points_table[away]['Points'] += 1
+            initial_points_table[away]['No Results'] += 1
+    elif result == home:
         if home in initial_points_table:
             initial_points_table[home]['Wins'] += 1
             initial_points_table[home]['Points'] += 2
         if away in initial_points_table: initial_points_table[away]['Losses'] += 1
-    elif winner == away:
+    elif result == away:
         if away in initial_points_table:
             initial_points_table[away]['Wins'] += 1
             initial_points_table[away]['Points'] += 2
@@ -138,7 +159,7 @@ print(f"Current Standings ({pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')})")
 print(f"Based on {len(completed_matches)} completed matches:")
 initial_points_df = pd.DataFrame.from_dict(initial_points_table, orient='index')
 initial_points_df = initial_points_df.reset_index().rename(columns={'index': 'Team'})
-print(initial_points_df.sort_values(by=['Points', 'Wins'], ascending=[False, False]).to_string(index=False))
+print(initial_points_df.sort_values(by=['Points', 'Wins'], ascending=[False, False])[ ['Team', 'Matches', 'Wins', 'Losses', 'No Results', 'Points'] ].to_string(index=False))
 print("=" * 60)
 
 # --- Monte Carlo Simulation Part ---
@@ -259,16 +280,15 @@ else:
         q1_winner = simulate_playoff_match(
             team1['team'], team2['team'],
             team1['points'], team2['points'],
-            bias_factor=0.2
+            bias_factor=0.1
         )
         q1_loser = team2['team'] if q1_winner == team1['team'] else team1['team']
 
         # Simulate Eliminator (3rd vs 4th) with points-based probability
         eliminator_winner = simulate_playoff_match(
             team3['team'], team4['team'],
-            team3['points'],
-            team4['points'],
-            bias_factor=0.2
+            team3['points'], team4['points'],
+            bias_factor=0.1
         )
 
         # Track Qualifier 2 appearances
@@ -283,7 +303,7 @@ else:
         q2_winner = simulate_playoff_match(
             q1_loser, eliminator_winner,
             q1_loser_points, eliminator_winner_points,
-            bias_factor=0.3
+            bias_factor=0.2
         )
 
         # Track Final appearances
@@ -301,7 +321,7 @@ else:
         # Historical data suggests Qualifier 1 winner has a higher chance (10 out of 14 times)
         q1_win_probability_bias = 10 / 14
         base_probability = 0.5
-        biased_probability_q1 = base_probability + (q1_win_probability_bias - base_probability) * 0.6 # Adjust 0.6 for strength of bias
+        biased_probability_q1 = base_probability + (q1_win_probability_bias - base_probability) * 0.4 # Adjust 0.4 for strength of bias
 
         # Introduce a slight randomness based on points in the final as well
         points_difference_factor = 0.005 # Adjust this to control impact of points difference
@@ -414,7 +434,7 @@ else:
             })
         else:
             points_stats_data.append({
-                'Team': team, 'Avg Pts': 'N/A', 'Median Pts': 'N/A', 'Mode Pts': 'N/A', 'Pts Range (25-75%)': 'N/A'
+                'Team': team, 'Avg Pts': 'N/A', 'Median Pts': 'N/A', 'Mode Pts': 'N/A'
             })
 
     points_stats_df = pd.DataFrame(points_stats_data)
@@ -426,28 +446,28 @@ else:
     print("=" * 60)
 
     # --- Optional: Create Championship Probability Visualization ---
-    plt.figure(figsize=(10, 6))
-    teams_sorted = [team for team in winner_df['Team']]
-    probs = [prob for prob in winner_df['Championship %']]
+    # plt.figure(figsize=(10, 6))
+    # teams_sorted = [team for team in winner_df['Team']]
+    # probs = [prob for prob in winner_df['Championship %']]
 
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    # colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+    #           '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 
-    plt.bar(teams_sorted, probs, color=colors[:len(teams_sorted)])
-    plt.title('IPL 2025 Championship Probability by Team (with historical bias)', fontsize=14)
-    plt.ylabel('Probability (%)')
-    plt.xticks(rotation=45, ha='right')
-    plt.gca().yaxis.set_major_formatter(PercentFormatter())
-    plt.tight_layout()
+    # plt.bar(teams_sorted, probs, color=colors[:len(teams_sorted)])
+    # plt.title('IPL 2025 Championship Probability by Team (with historical bias)', fontsize=14)
+    # plt.ylabel('Probability (%)')
+    # plt.xticks(rotation=45, ha='right')
+    # plt.gca().yaxis.set_major_formatter(PercentFormatter())
+    # plt.tight_layout()
 
-    # Save the figure
-    plt.savefig('ipl_2025_championship_probabilities_biased.png', dpi=300)
-    print("\nChampionship probability chart (with historical bias) saved as 'ipl_2025_championship_probabilities_biased.png'")
+    # # Save the figure
+    # plt.savefig('ipl_2025_championship_probabilities_biased.png', dpi=300)
+    # print("\nChampionship probability chart (with historical bias) saved as 'ipl_2025_championship_probabilities_biased.png'")
 
     print("\nNotes:")
     print(" - Probabilities are estimates based on Monte Carlo simulation")
     print(" - League stage uses 50/50 random outcomes for remaining matches")
     print(" - Playoff simulations are weighted by team points (stronger teams have advantage)")
-    print(" - The final match simulation now incorporates a historical bias favoring the winner of Qualifier 1.")
+    print(" - The final match simulation incorporates a very strong historical bias (10/14) favoring the winner of Qualifier 1.")
     print(" - Results reflect both remaining schedule difficulty and playoff format advantage.")
     print("=" * 60)
