@@ -126,4 +126,9 @@ The script outputs several tables:
     *   `Median Pts`: The midpoint of the points distribution (50% of simulations finished with more points, 50% with fewer). Less sensitive to extreme outlier results than the average.
     *   `Mode Pts`: The most frequently occurring final points tally for that team across all simulations. Indicates the most common single points outcome.
 
+Result of Sim as on 28th April 2025-
+
+                                       ![image](https://github.com/user-attachments/assets/fa97dade-1761-4f38-89ed-0e37600c341d)
+
+
 **Important Note:** These are probabilistic estimates based on the model's assumptions and the results entered. They are not guarantees and do not account for factors like player injuries, sudden changes in form, specific pitch conditions, or precise Net Run Rate calculations.
